@@ -1,0 +1,10 @@
+{
+    "require": {
+        "amphp/amp": "^2.4",
+        "amphp/http-client": "^4.2",
+        "symfony/dom-crawler": "^5.0",
+        "symfony/css-selector": "^5.0",
+        "amphp/file": "^1.0",
+        "amphp/dns": "^1.2"
+    }
+}
