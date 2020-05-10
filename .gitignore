@@ -2,3 +2,4 @@ composer.lock
 vendor/
 .idea/
 .idea/php.xml
+domains.txt
