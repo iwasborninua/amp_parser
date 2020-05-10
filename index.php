@@ -21,11 +21,17 @@ Loop::run(function () use (&$from, $to) {
         if ($response->getStatus() == 200){
             $crawler = new Crawler((string) yield $response->getBody()->buffer());
             $links = $crawler->filter('div.left > a');
-            $links->each(function ($node) use ($handle) {
-                if(substr($node->attr('href'), 0, -1) != null && $node->attr('class') != "backlink") {
-                    $handle->write($node->text() . "\n");
+            foreach ($links as $link) {
+                try {
+                    $domain = yield $client->request(new Request("http://" . $link->textContent));
+                    if ($domain->getStatus() == 200) {
+                        $handle->write($link->textContent . "\n");
+                        echo $link->textContent . " : 200" . PHP_EOL;
+                    }
+                } catch (Exception $e) {
+
                 }
-            });
+            }
             echo $uri . ' : ' . $links->count() . PHP_EOL;
         } else {
             echo $uri . " 404" . PHP_EOL;
