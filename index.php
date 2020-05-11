@@ -6,13 +6,13 @@ use Amp\Http\Client\Request;
 use Amp\Loop;
 use Symfony\Component\DomCrawler\Crawler;
 
-$from = new DateTime('2006-09-01');
-$to = new DateTime('2006-10-01');
+$from = new DateTime('2006-06-01');
+$to = new DateTime('2006-12-31');
 
 
 Loop::run(function () use (&$from, $to) {
     $client = HttpClientBuilder::buildDefault();
-    $handle = yield \Amp\File\open("domains.txt", "w");
+    $handle = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . ".txt", "w");
 
     while ($from < $to) {
         $uri = "https://whoistory.com/" . $from->format('/Y/m/d/');
@@ -23,13 +23,15 @@ Loop::run(function () use (&$from, $to) {
             $links = $crawler->filter('div.left > a');
             foreach ($links as $link) {
                 try {
-                    $domain = yield $client->request(new Request("http://" . $link->textContent));
-                    if ($domain->getStatus() == 200) {
+                    $request = new Request("http://" . $link->textContent);
+                    $request->setTcpConnectTimeout(3000);
+                    $domain = yield $client->request($request);
+                    if ($domain->getStatus() == 200 || $domain->getStatus() == 302) {
                         $handle->write($link->textContent . "\n");
                         echo $link->textContent . " : 200" . PHP_EOL;
                     }
                 } catch (Exception $e) {
-
+                    echo $e->getCode() . " : " . $e->getMessage() . PHP_EOL;
                 }
             }
             echo $uri . ' : ' . $links->count() . PHP_EOL;
