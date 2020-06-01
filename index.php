@@ -14,6 +14,7 @@ Loop::run(function () use (&$from, $to) {
     $client = HttpClientBuilder::buildDefault();
     $handle = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . ".txt", "w");
     $log = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . "_log" . ".txt", "w");
+    $log->write("Started: " . (new DateTime())->format("d-m-Y H:m:s") . PHP_EOL);
 
     while ($from < $to) {
         $uri = "https://whoistory.com/" . $from->format('/Y/m/d/');
@@ -49,5 +50,6 @@ Loop::run(function () use (&$from, $to) {
         $from->modify("+ 1 day");
     }
 
+    $log->write("Ended: " . (new DateTime())->format("d-m-Y H:m:s") . PHP_EOL);
     echo PHP_EOL . PHP_EOL . "Done!" . PHP_EOL . PHP_EOL;
 });
