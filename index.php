@@ -6,14 +6,14 @@ use Amp\Http\Client\Request;
 use Amp\Loop;
 use Symfony\Component\DomCrawler\Crawler;
 
-$from = new DateTime('2006-01-01');
+$from = new DateTime('2006-02-01');
 $to = new DateTime('2006-12-31');
 
 
 Loop::run(function () use (&$from, $to) {
     $client = HttpClientBuilder::buildDefault();
     $handle = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . ".txt", "w");
-    $log = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . "log" . ".txt", "w");
+    $log = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . "_log" . ".txt", "w");
 
     while ($from < $to) {
         $uri = "https://whoistory.com/" . $from->format('/Y/m/d/');
@@ -28,7 +28,7 @@ Loop::run(function () use (&$from, $to) {
                 foreach ($links as $link) {
                     try {
                         $request = new Request("http://" . $link->textContent);
-                        $request->setTcpConnectTimeout(3000);
+                        $request->setTcpConnectTimeout(2400);
                         $domain = yield $client->request($request);
                         if ($domain->getStatus() == 200 || $domain->getStatus() == 302) {
                             $handle->write($link->textContent . "\n");

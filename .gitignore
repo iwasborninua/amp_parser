@@ -4,3 +4,4 @@ vendor/
 .idea/php.xml
 domains.txt
 2006-01-01_2006-12-31.txt
+*.txt
