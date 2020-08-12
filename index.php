@@ -1,55 +1,104 @@
 <?php
 require "vendor/autoload.php";
 
+use Amp\Loop;
+use Amp\Producer;
+use Amp\Promise;
+use Amp\ByteStream;
+use Amp\Dns;
+use Amp\Dns\DnsException;
+use Amp\File;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request;
-use Amp\Loop;
+use Amp\Log\ConsoleFormatter;
+use Amp\Log\StreamHandler;
+use Amp\Sync\LocalSemaphore;
+use Monolog\Logger;
 use Symfony\Component\DomCrawler\Crawler;
+use function Amp\call;
 
-$from = new DateTime('2006-02-01');
-$to = new DateTime('2006-12-31');
+Dns\resolver(new Dns\Rfc1035StubResolver(null, new class implements Dns\ConfigLoader {
+    public function loadConfig(): Promise
+    {
+        return Amp\call(function () {
+            $hosts = yield (new Dns\HostLoader)->loadHosts();
 
-
-Loop::run(function () use (&$from, $to) {
-    $client = HttpClientBuilder::buildDefault();
-    $handle = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . ".txt", "w");
-    $log = yield \Amp\File\open($from->format("Y-m-d") . "_" . $to->format("Y-m-d") . "_log" . ".txt", "w");
-    $log->write("Started: " . (new DateTime())->format("d-m-Y H:m:s") . PHP_EOL);
-
-    while ($from < $to) {
-        $uri = "https://whoistory.com/" . $from->format('/Y/m/d/');
-        $response = yield $client->request(new Request($uri, 'GET'));
-
-        if ($response->getStatus() == 200) {
-            $crawler = new Crawler((string) yield $response->getBody()->buffer());
-            $links = $crawler->filter('div.left > a');
-            $valid = 0;
-
-            if (count($links) > 1) {
-                foreach ($links as $link) {
-                    try {
-                        $request = new Request("http://" . $link->textContent);
-                        $request->setTcpConnectTimeout(2400);
-                        $domain = yield $client->request($request);
-                        if ($domain->getStatus() == 200 || $domain->getStatus() == 302) {
-                            $handle->write($link->textContent . "\n");
-                            $valid += 1;
-                            echo $link->textContent . " : 200" . PHP_EOL;
-                        }
-                    } catch (Exception $e) {
-                        echo $e->getCode() . " : " . $e->getMessage() . PHP_EOL;
-                    }
-                }
-            }
-            $log->write($uri . " domains: {$links->count()} , valid: {$valid};" . PHP_EOL);
-            echo $uri . ' : ' . $links->count() . ", valid: {$valid};" . PHP_EOL;
-            $valid = 0;
-        } else {
-            echo $uri . " 404" . PHP_EOL;
-        }
-        $from->modify("+ 1 day");
+            return new Dns\Config([
+                "8.8.8.8:53",
+                "[2001:4860:4860::8888]:53",
+            ], $hosts, $timeout = 5000, $attempts = 3);
+        });
     }
+}));
 
-    $log->write("Ended: " . (new DateTime())->format("d-m-Y H:m:s") . PHP_EOL);
-    echo PHP_EOL . PHP_EOL . "Done!" . PHP_EOL . PHP_EOL;
+$logger = (new Logger('amp-parser'))
+    ->pushHandler(
+        (new StreamHandler(ByteStream\getStdout()))
+            ->setFormatter(new ConsoleFormatter)
+    );
+
+Loop::setErrorHandler(fn(\Throwable $t) => $logger->alert($t));
+
+Loop::run(function () use ($logger) {
+    $semaphore = new LocalSemaphore(50);
+    $client = HttpClientBuilder::buildDefault();
+    $file = yield File\open('domains.txt', 'w');
+
+    $producer = new Producer(function ($emit) use ($client, $logger) {
+        $from = new DateTime('2006-02-01');
+        $to = new DateTime('2006-12-31');
+
+        while ($from < $to) {
+            try {
+                $url = "https://whoistory.com/{$from->format('/Y/m/d/')}";
+                $logger->debug("Request to {$url}");
+
+                $response = yield $client->request(new Request($url, 'GET'));
+            } catch (\Throwable $t) {
+                $logger->error("Error during request to {$url}: {$t->getMessage()}");
+                continue;
+            }
+
+            $links = (new Crawler((string) yield $response->getBody()->buffer()))
+                ->filter('div.left > a:not(.backlink)');
+
+            $logger->info("{$url} contains " . count($links) . " links");
+            foreach ($links as $link) {
+                yield $emit($link->textContent);
+            }
+
+            $from->modify('+ 1 day');
+        }
+    });
+
+    $validDomainsCount = 0;
+    while (($lock = yield $semaphore->acquire()) && yield $producer->advance()) {
+        $domain = $producer->getCurrent();
+
+        $promise = call(function () use ($domain, $client) {
+            $request = new Request("http://{$domain}/");
+            $request->setTcpConnectTimeout(2400);
+            $response = yield $client->request($request);
+
+            return [$domain, $response->getStatus()];
+        });
+
+        $promise->onResolve(function ($error, $args) use ($domain, $lock, $file, $logger, &$validDomainsCount) {
+            $lock->release();
+            if ($error !== null) {
+                return $error instanceof DnsException
+                    ? $logger->debug("Unable to resolve domain {$domain}")
+                    : $logger->error("Error occured during request to {$domain}: {$error->getMessage()}");
+            }
+
+            [$domain, $statusCode] = $args;
+            if ((int) $statusCode > 499) {
+                return $logger->info("{$domain} has returned {$statusCode} code");
+            }
+
+            $validDomainsCount++;
+            $logger->info("{$domain} has returned {$statusCode} code, Total valid domains: {$validDomainsCount}");
+            $file->write("{$domain}\n");
+        });
+    }
 });

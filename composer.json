@@ -5,6 +5,7 @@
         "symfony/dom-crawler": "^5.0",
         "symfony/css-selector": "^5.0",
         "amphp/file": "^1.0",
-        "amphp/dns": "^1.2"
+        "amphp/dns": "^1.2",
+        "amphp/log": "^1.1"
     }
 }
