@@ -37,7 +37,10 @@ $logger = (new Logger('amp-parser'))
             ->setFormatter(new ConsoleFormatter)
     );
 
-Loop::setErrorHandler(fn(\Throwable $t) => $logger->alert($t));
+//Loop::setErrorHandler(fn(\Throwable $t) => $logger->alert($t));
+Loop::setErrorHandler(function (\Throwable $t) use ($logger) { 
+    $logger->alert($t);
+});
 
 Loop::run(function () use ($logger) {
     $semaphore = new LocalSemaphore(50);
@@ -46,7 +49,7 @@ Loop::run(function () use ($logger) {
 
     $producer = new Producer(function ($emit) use ($client, $logger) {
         $from = new DateTime('2006-02-01');
-        $to = new DateTime('2006-12-31');
+        $to = new DateTime('2020-01-01');
 
         while ($from < $to) {
             try {
