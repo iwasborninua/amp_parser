@@ -11,6 +11,7 @@ use Amp\File;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request;
 use Amp\Log\ConsoleFormatter;
+use Monolog\Formatter\LineFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Sync\LocalSemaphore;
 use Monolog\Logger;
@@ -40,6 +41,16 @@ $logger = (new Logger('amp-parser'))
 Loop::setErrorHandler(fn(\Throwable $t) => $logger->alert($t));
 
 Loop::run(function () use ($logger) {
+    $logPath = __DIR__ . '/logs/log-' . date('Y-m-d-H-i-s') . '.txt';
+    if (!yield File\isDir(dirname($logPath))) {
+        yield File\mkdir(dirname($logPath));
+    }
+
+    $logger->pushHandler(
+        (new StreamHandler(yield File\open($logPath, 'w')))
+            ->setFormatter(new LineFormatter)
+    );
+
     $semaphore = new LocalSemaphore(50);
     $client = HttpClientBuilder::buildDefault();
     $file = yield File\open('domains.txt', 'w');
