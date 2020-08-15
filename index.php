@@ -59,6 +59,7 @@ Loop::run(function () use ($logger) {
                 $response = yield $client->request(new Request($url, 'GET'));
             } catch (\Throwable $t) {
                 $logger->error("Error during request to {$url}: {$t->getMessage()}");
+                $from->modify('+ 1 day');
                 continue;
             }
 
