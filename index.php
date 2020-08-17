@@ -11,6 +11,7 @@ use Amp\File;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request;
 use Amp\Log\ConsoleFormatter;
+use Monolog\Formatter\LineFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Sync\LocalSemaphore;
 use Monolog\Logger;
@@ -31,6 +32,7 @@ Dns\resolver(new Dns\Rfc1035StubResolver(null, new class implements Dns\ConfigLo
     }
 }));
 
+
 $logger = (new Logger('amp-parser'))
     ->pushHandler(
         (new StreamHandler(ByteStream\getStdout()))
@@ -43,13 +45,22 @@ Loop::setErrorHandler(function (\Throwable $t) use ($logger) {
 });
 
 Loop::run(function () use ($logger) {
+	$logPath = __DIR__ . '/logs/log-' . date('Y-m-d-H-i-s') . '.txt';
+    if (!yield File\isDir(dirname($logPath))) {
+        yield File\mkdir(dirname($logPath));
+    }
+
+    $logger->pushHandler(
+        (new StreamHandler(yield File\open($logPath, 'w')))
+            ->setFormatter(new LineFormatter)
+    );
     $semaphore = new LocalSemaphore(50);
     $client = HttpClientBuilder::buildDefault();
     $file = yield File\open('domains.txt', 'w');
 
     $producer = new Producer(function ($emit) use ($client, $logger) {
-        $from = new DateTime('2006-02-01');
-        $to = new DateTime('2020-01-01');
+        $from = new DateTime('2006-01-01');
+        $to = new DateTime('2007-01-01');
 
         while ($from < $to) {
             try {

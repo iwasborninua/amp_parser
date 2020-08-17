@@ -1,3 +1,5 @@
 vendor/
 domains.txt
 composer.lock
+logs/
+.idea/
